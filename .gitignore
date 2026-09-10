@@ -1,0 +1,116 @@
+# =============================================================================
+# SatAi — .gitignore
+# Principio: nel repository entrano SOLO codice e documenti. Tutto ciò che
+# la pipeline scarica, genera o addestra è riproducibile con i comandi del
+# README, può pesare molti GB e non deve mai finire in git.
+# =============================================================================
+
+# ---------- Ambienti virtuali ----------
+.venv/
+venv/
+env/
+.ENV/
+
+# ---------- Cache Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---------- Dati della pipeline (FITS, crop, staging) ----------
+# L'intera cartella data/ è generata da:
+#   python -m src.acquisition.run_all
+#   python -m src.data.build_dataset
+data/**
+!data/
+!data/fits_raw/
+!data/fits_raw/.gitkeep
+!data/png_samples/
+!data/png_samples/.gitkeep
+
+# ---------- Modelli addestrati e checkpoint ----------
+# Generati da: python -m src.training.train
+models_saved/**
+!models_saved/
+!models_saved/.gitkeep
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# ---------- Immagini e foto (MAI committare) ----------
+# Vale a livello globale: nessuna immagine in nessuna sottocartella.
+*.png
+*.jpg
+*.jpeg
+*.jpe
+*.jfif
+*.tif
+*.tiff
+*.gif
+*.bmp
+*.webp
+*.heic
+*.heif
+*.avif
+*.ico
+*.svg
+*.psd
+*.raw
+*.cr2
+*.nef
+*.arw
+
+# ---------- File astronomici e array scientifici ----------
+*.fits
+*.fit
+*.fts
+*.fz
+*.fits.gz
+*.npy
+*.npz
+*.pkl
+*.pickle
+*.h5
+*.hdf5
+*.parquet
+*.vot
+*.xml
+
+# ---------- Output generati (report, metriche, batch) ----------
+*.csv
+*.tsv
+*.log
+predictions*.csv
+evaluation_report.txt
+confusion_matrix.png
+
+# ---------- Cache strumenti astronomici ----------
+.astropy/
+astroquery/
+.ipynb_checkpoints/
+
+# ---------- IDE / editor ----------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+
+# ---------- Sistema operativo ----------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+desktop.ini
+
+# ---------- Workspace strumenti locali ----------
+.freebuff/
