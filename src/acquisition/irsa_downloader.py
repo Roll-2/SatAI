@@ -8,7 +8,7 @@ images by their band/energy metadata.
 
 Usage::
 
-    from src.acquisition.irsa_downloader import download_spitzer
+    from Src.acquisition.irsa_downloader import download_spitzer
     download_spitzer(n_images=200)
 """
 
@@ -23,8 +23,8 @@ import astropy.units as u
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
 
-from src.acquisition._common import download_images
-from src.utils.constants import FITS_RAW_DIR, RAND_SEED
+from Src.acquisition._common import download_images
+from Src.utils.constants import FITS_RAW_DIR, IRSA_BANDPASS, RAND_SEED
 
 #: Dense star fields (Galactic plane / Magellanic Clouds) for PSF hunting.
 STAR_FIELDS: list[tuple[str, str]] = [
@@ -66,8 +66,13 @@ def _pick_collections(available, starts_with: tuple[str, ...]) -> list[str]:
 def _download_mission(mission: str,
                       prefixes: tuple[str, ...],
                       n_images: int,
-                      out_dir: Path) -> int:
-    """Generic IRSA SIAv2 loop for one mission (Spitzer or WISE)."""
+                      out_dir: Path,
+                      offset: int = 0) -> int:
+    """Generic IRSA SIAv2 loop for one mission (Spitzer or WISE).
+
+    ``offset`` rotates the field order and shifts the result slice so
+    consecutive streaming batches fetch different images.
+    """
     from astroquery.ipac.irsa import Irsa
 
     collections = _pick_collections(Irsa.list_collections(), prefixes)
@@ -77,7 +82,8 @@ def _download_mission(mission: str,
         return 0
 
     random.seed(RAND_SEED)
-    fields = STAR_FIELDS[:]
+    fields = (STAR_FIELDS[offset % len(STAR_FIELDS):]
+              + STAR_FIELDS[:offset % len(STAR_FIELDS)])
     random.shuffle(fields)
 
     written = 0
@@ -95,13 +101,26 @@ def _download_mission(mission: str,
                 pos=(coord, 8 * u.arcmin),
                 collection=collections,
                 data_type="image",
-                maxrec=50,
+                maxrec=50 + offset * 10,
             )
         except Exception as exc:  # noqa: BLE001
             print(f"[IRSA {mission}] {name}: {exc}")
             continue
         if table is None or len(table) == 0:
             continue
+
+        # Band filter at query level: the class spec fixes ONE channel per
+        # mission (Spitzer: IRAC ch.1 3.6 um, WISE: W1 3.4 um). The SIA
+        # rows carry ``energy_bandpassname`` (IRAC1..4, W1..W4); without
+        # this filter IRSA serves all channels mixed and the PSF shapes
+        # of different bands poison the class (diagnosis 2026-09-13).
+        band_names = IRSA_BANDPASS.get(mission.lower())
+        if band_names is not None and "energy_bandpassname" in table.colnames:
+            allowed = {b.upper() for b in band_names}
+            table = table[[str(b).upper() in allowed
+                           for b in table["energy_bandpassname"]]]
+            if len(table) == 0:
+                continue
 
         colnames = table.colnames
         url_col = next((c for c in colnames if "access" in c.lower()
@@ -112,7 +131,8 @@ def _download_mission(mission: str,
 
         def _fetch(table=table, url_col=url_col):
             hdulists = []
-            for url in table[url_col][:30]:
+            skip = (offset * 5) % max(len(table[url_col]), 1)
+            for url in table[url_col][skip:skip + 30]:
                 try:
                     with urllib.request.urlopen(str(url), timeout=120) as resp:
                         blob = resp.read()
@@ -129,29 +149,33 @@ def _download_mission(mission: str,
     return written
 
 
-def download_spitzer(n_images: int, out_dir: Path | None = None) -> int:
+def download_spitzer(n_images: int, out_dir: Path | None = None,
+                     offset: int = 0) -> int:
     """Download real Spitzer FITS images from IRSA.
 
     Args:
         n_images: target number of FITS files.
-        out_dir: destination (default ``data/fits_raw/spitzer``).
+        out_dir: destination (default ``Data/fits_raw/spitzer``).
 
     Returns:
         Number of FITS files written.
     """
     return _download_mission("Spitzer", ("spitzer",), n_images,
-                             out_dir or FITS_RAW_DIR / "spitzer")
+                             out_dir or FITS_RAW_DIR / "spitzer",
+                             offset=offset)
 
 
-def download_wise(n_images: int, out_dir: Path | None = None) -> int:
+def download_wise(n_images: int, out_dir: Path | None = None,
+                  offset: int = 0) -> int:
     """Download real WISE/AllWISE FITS images from IRSA.
 
     Args:
         n_images: target number of FITS files.
-        out_dir: destination (default ``data/fits_raw/wise``).
+        out_dir: destination (default ``Data/fits_raw/wise``).
 
     Returns:
         Number of FITS files written.
     """
     return _download_mission("WISE", ("wise",), n_images,
-                             out_dir or FITS_RAW_DIR / "wise")
+                             out_dir or FITS_RAW_DIR / "wise",
+                             offset=offset)

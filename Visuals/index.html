@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AstroNet-v2 · la rete in 3D</title>
+<style>
+  :root {
+    --bg: #05070d;
+    --panel: rgba(12, 18, 31, .78);
+    --line: rgba(137, 192, 230, .17);
+    --text: #e8f1f6;
+    --dim: #8aa3b5;
+    --cyan: #67e7ff;
+    --blue: #3d84ff;
+    --green: #47ff9e;
+    --yellow: #ffe36a;
+    --orange: #ff8a3d;
+    --violet: #c084ff;
+    --gold: #ffd27a;
+    --pink: #ff4f93;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background:
+      radial-gradient(900px 520px at 18% 0%, rgba(39, 83, 160, .22), transparent 68%),
+      radial-gradient(800px 500px at 88% 18%, rgba(172, 92, 20, .13), transparent 70%),
+      var(--bg);
+    line-height: 1.5;
+    overflow-x: hidden;
+  }
+  .shell { width: min(1180px, calc(100% - 28px)); margin: 0 auto; padding: 18px 0 38px; }
+  header { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 10px; }
+  .kicker { color: var(--cyan); font-size: 10px; letter-spacing: .22em; text-transform: uppercase; font-weight: 700; }
+  h1 { margin: 5px 0 0; font-size: clamp(28px, 3.7vw, 42px); line-height: .98; letter-spacing: -.045em; font-weight: 760; }
+  h1 em { font-style: normal; color: var(--gold); }
+  header p { max-width: 430px; margin: 0; color: var(--dim); font-size: 12.5px; line-height: 1.5; }
+  .viewer { width: min(100%, calc((100vh - 238px) * 16 / 9)); margin: 0 auto; }
+  .viewerbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    flex-wrap: wrap; padding: 0 0 8px;
+  }
+  .viewerlabel { color: var(--dim); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
+  .viewerlabel b { color: var(--text); font-weight: 600; }
+  .live { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--green); margin-right: 6px; box-shadow: 0 0 10px var(--green); vertical-align: 1px; }
+  .chapters { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+  .chapter {
+    appearance: none; border: 1px solid var(--line); background: rgba(15,25,43,.72);
+    color: var(--dim); border-radius: 999px; padding: 6px 10px; font-size: 10.5px;
+    cursor: pointer; font-family: inherit; letter-spacing: .02em; transition: .18s;
+    white-space: nowrap;
+  }
+  .chapter:hover { color: var(--cyan); border-color: var(--cyan); }
+  .chapter.active { color: #06111a; background: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 18px rgba(103, 231, 255, .55); }
+  .chapter .dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; margin-right: 5px; background: currentColor; opacity: .8; }
+  .stage {
+    position: relative; border: 1px solid var(--line); border-radius: 18px;
+    overflow: hidden; background: #020308;
+    box-shadow: 0 26px 80px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255,255,255,.02) inset;
+  }
+  video { display: block; width: 100%; aspect-ratio: 16 / 9; background: #020308; }
+  .grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; margin-top: 16px; }
+  .panel { border: 1px solid var(--line); background: var(--panel); border-radius: 17px; padding: 20px; backdrop-filter: blur(12px); }
+  .panel h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .15em; text-transform: uppercase; color: var(--cyan); }
+  .panel p { color: #bed0db; font-size: 13.5px; margin: 0 0 11px; }
+  .panel p:last-child { margin-bottom: 0; }
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; }
+  .stat { border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; background: rgba(4,10,20,.53); }
+  .stat b { display: block; color: var(--gold); font-size: 21px; letter-spacing: -.04em; line-height: 1.1; }
+  .stat span { color: var(--dim); font-size: 10px; text-transform: uppercase; letter-spacing: .07em; }
+  .legend { display: grid; gap: 7px; margin-top: 13px; }
+  .legend div { display: flex; gap: 9px; align-items: flex-start; color: var(--dim); font-size: 12px; }
+  .swatch { width: 20px; height: 6px; border-radius: 99px; margin-top: 5px; flex: 0 0 auto; box-shadow: 0 0 14px currentColor; background: currentColor; }
+  .links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 15px; }
+  .links a { color: var(--text); text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 7px 11px; font-size: 11.5px; background: rgba(10,20,36,.7); }
+  .links a:hover { border-color: var(--cyan); color: var(--cyan); }
+  .foot { margin-top: 22px; color: #5f7486; font-size: 10.5px; line-height: 1.65; }
+  .foot a { color: #8fb8cd; }
+  @media (max-width: 860px) {
+    .grid { grid-template-columns: 1fr; }
+    header { align-items: flex-start; }
+    .viewer { width: 100%; }
+  }
+  @media (max-height: 700px) {
+    .shell { padding-top: 10px; }
+    header p { display: none; }
+    h1 { font-size: 26px; }
+    .viewer { width: min(100%, calc((100vh - 155px) * 16 / 9)); }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div>
+      <div class="kicker">AstroNet-v2 · visualizzazione scientifica · SatAi</div>
+      <h1>Dalla foto <em>alla classe.</em></h1>
+    </div>
+    <p>Una rete convoluzionale costruita dai suoi pesi reali: 4 blocchi, 9.872 filamenti e 61.833 attivazioni. Il video è il render Blender della scena, non una ricostruzione WebGL.</p>
+  </header>
+
+  <section class="viewer" aria-label="Animazione 3D della rete AstroNet-v2">
+    <div class="viewerbar">
+      <div class="viewerlabel"><span class="live"></span><b>Animazione 3D</b> · 9 secondi · 8 capitoli</div>
+      <nav class="chapters" aria-label="Capitoli del video">
+        <button class="chapter" data-time="0.0"><span class="dot"></span>Input</button>
+        <button class="chapter" data-time="0.8"><span class="dot"></span>Conv 1</button>
+        <button class="chapter" data-time="1.9"><span class="dot"></span>Conv 2</button>
+        <button class="chapter" data-time="3.1"><span class="dot"></span>Conv 3</button>
+        <button class="chapter" data-time="4.3"><span class="dot"></span>Conv 4</button>
+        <button class="chapter" data-time="5.8"><span class="dot"></span>GAP</button>
+        <button class="chapter" data-time="6.5"><span class="dot"></span>Dense 1</button>
+        <button class="chapter" data-time="7.4"><span class="dot"></span>Output</button>
+      </nav>
+    </div>
+    <div class="stage">
+      <video id="player" controls muted loop playsinline autoplay preload="auto" poster="satai_network_3d_wide.png">
+        <source src="satai_network_3d.mp4" type="video/mp4">
+        Il browser non supporta il video. Apri <a href="satai_network_3d.mp4">satai_network_3d.mp4</a>.
+      </video>
+    </div>
+  </section>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>Che cosa stai guardando</h2>
+      <p>L'input è un crop reale di Hubble da 64×64 pixel. I quattro blocchi sono i layer <b>Conv 3×3 + BatchNorm + ReLU + MaxPool</b>: la risoluzione spaziale scende, i canali salgono. Ogni filtro è una pila di tre lastre, una per canale d'ingresso, e ognuna porta la sua micro-griglia 3×3 del kernel reale. Le cornici al neon identificano i layer; le attivazioni post-ReLU sono gli ottaedri luminosi.</p>
+      <p>Le fibre non sono decorative: sono <b>9.872 filamenti connettivi</b>, di cui <b>4.724 negativi</b>. Ogni pixel del 64×64 ne emette uno (4.096 totali); ogni canale a valle riceve le otto connessioni più forti e la GAP quattro filamenti per canale. Lo spessore codifica il peso; il colore identifica il layer, il <b>magenta</b> un peso negativo.</p>
+      <p>Nel finale la camera racconta come nasce l'output: la GAP schiaccia i 256 canali in una barra orizzontale, Dense 1 è la rete di 128 nodi, Dense 2 produce le 9 classi. Solo 5 classi hanno dati reali; le altre 4 restano spente. Le didascalie sono sotto ogni modulo e si accendono insieme al layer che descrivono.</p>
+      <div class="legend">
+        <div><span class="swatch" style="color:#67e7ff"></span><span>Fibra del layer / peso positivo</span></div>
+        <div><span class="swatch" style="color:#ff2d7f"></span><span>Peso negativo: 4.724 connessioni</span></div>
+        <div><span class="swatch" style="color:#ffd27a"></span><span>Output: classe con dati reali</span></div>
+        <div><span class="swatch" style="color:#42536b"></span><span>Output: classe futura, senza dati</span></div>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <h2>La rete in numeri</h2>
+      <div class="stats">
+        <div class="stat"><b>64×64</b><span>input</span></div>
+        <div class="stat"><b>4</b><span>blocchi conv</span></div>
+        <div class="stat"><b>61.833</b><span>neuroni</span></div>
+        <div class="stat"><b>422.857</b><span>parametri</span></div>
+        <div class="stat"><b>69,9%</b><span>pesi in Conv 4</span></div>
+        <div class="stat"><b>46 px</b><span>campo recettivo</span></div>
+        <div class="stat"><b>9.872</b><span>filamenti disegnati</span></div>
+        <div class="stat"><b>4.724</b><span>pesi negativi</span></div>
+      </div>
+      <div class="links">
+        <a href="satai_network_3d.mp4" download>Scarica MP4</a>
+        <a href="satai_network_3d_wide.png">Poster largo</a>
+        <a href="satai_network_3d_head.png">Dettaglio testa</a>
+        <a href="satai_network_3d.blend">Apri in Blender</a>
+      </div>
+    </aside>
+  </div>
+
+  <div class="foot">
+    Pesi e attivazioni: <code>Models/astro_net_v2_best.pt</code> · crop:
+    <code>Data/crops/test/hubble/hubble_0009_M33_0009_crop02.npy</code> ·
+    predizione <b>Hubble 99,91%</b>. Generato da
+    <a href="build_network_data.py">build_network_data.py</a> e
+    <a href="blender_build.py">blender_build.py</a>; dettagli in
+    <a href="README.md">Visuals/README.md</a> ·
+    dati <a href="network_data.json">network_data.json</a>.
+  </div>
+</div>
+
+<script>
+  const player = document.getElementById('player');
+  const chapters = [...document.querySelectorAll('.chapter')];
+  chapters.forEach((button) => {
+    button.addEventListener('click', () => {
+      player.currentTime = Number(button.dataset.time);
+      player.play();
+    });
+  });
+  function syncChapter() {
+    let active = null;
+    for (const button of chapters) {
+      if (player.currentTime >= Number(button.dataset.time)) active = button;
+    }
+    chapters.forEach((button) => button.classList.toggle('active', button === active));
+  }
+  player.addEventListener('timeupdate', syncChapter);
+  player.addEventListener('seeked', syncChapter);
+  player.addEventListener('loadedmetadata', syncChapter);
+  syncChapter();
+</script>
+</body>
+</html>

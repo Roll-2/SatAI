@@ -13,7 +13,7 @@ Answers three questions with measured evidence from the live model:
 
 Usage::
 
-    .venv/bin/python scripts/model_map.py
+    .venv/bin/python Tools/training/model_map.py
 """
 
 from __future__ import annotations
@@ -21,13 +21,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 import torch
-import torch.nn as nn
 
-from src.models.psf_cnn import build_model
+from Src.models.psf_cnn import build_model
 
 LINE = "-" * 78
 

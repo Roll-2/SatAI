@@ -4,12 +4,12 @@ The "Altro" class is NOT optional (spec 5.2). Composition implemented here:
 
 * **40% amateur-style PSFs** — synthesized telescope PSFs (Celestron/Meade
   style: 4-vane spider spikes, defocused donuts, chromatic fringes) plus
-  any real images the user drops in ``data/fits_raw/altro/``.
+  any real images the user drops in ``Data/fits_raw/altro/``.
 * **20% satellite-like textures** — grayscale, satellite-imagery-like
   synthetic textures (streets/fields/city blocks), no point sources.
 * **20% pure Gaussian noise**.
 * **20% galaxy cutouts** — real Legacy Survey cutouts downloaded by
-  :mod:`src.acquisition.galaxy_cutouts` (no point-like stars).
+  :mod:`Src.acquisition.galaxy_cutouts` (no point-like stars).
 
 Everything is saved as ``.npy`` crops directly into the staging area.
 """
@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 from tqdm import tqdm
 
-from src.utils.constants import CROP_SIZE, CROPS_STAGING_DIR, RAND_SEED
+from Src.utils.constants import CROP_SIZE, CROPS_STAGING_DIR, FITS_RAW_DIR, RAND_SEED
 
 __all__ = ["generate_altro_crops"]
 
@@ -101,6 +101,91 @@ def _satellite_texture(rng: random.Random) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
+# NEW: 12% — Hubble-like PSF crops (4 diffraction spikes from spider vanes)
+# ---------------------------------------------------------------------------
+def _hubble_psf(rng: random.Random) -> np.ndarray:
+    """Synthesize a Hubble-telescope PSF crop (4-vane spider + diffraction spikes).
+
+    Produces a central defocused donut with 4 symmetric diffraction spikes
+    at 0°, 90°, 180°, 270° — the characteristic HST ACS/WFC3 pattern.
+    """
+    size = CROP_SIZE
+    yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
+    cx = cy = size / 2.0 - 0.5
+    r = np.hypot(xx - cx, yy - cy)
+    theta = np.arctan2(yy - cy, xx - cx)
+
+    img = np.zeros((size, size), dtype=np.float32)
+
+    # Gaussian core with random defocus (donut-like), mimicking HST's dithered focus.
+    sigma_core = rng.uniform(1.5, 3.0)
+    img += np.exp(-0.5 * (r / sigma_core) ** 2)
+
+    # 4 diffraction spikes from the spider vanes, fixed at 90° increments.
+    # Each spike is a truncated Gaussian along its length.
+    spike_len = rng.uniform(15.0, 25.0)
+    spike_width = rng.uniform(0.015, 0.035)
+    for k in range(4):
+        # Fixed angle: k * 90° (0, 90, 180, 270 deg = 0, pi/2, pi, 3pi/2)
+        spike_angle = k * np.pi / 2
+        d = np.abs(np.sin(theta - spike_angle))
+        # Create spike using radial profile in the spike direction
+        spike = np.exp(-0.5 * (d / spike_width) ** 2) * (r < spike_len)
+        img += 0.7 * spike
+
+    # Add weak Gaussian noise.
+    img += rng.gauss(0.0, 0.015) * np.ones_like(img)
+    img += np.random.default_rng(rng.randint(0, 2**32)).normal(0, 0.005, img.shape)
+
+    img -= img.min()
+    if img.max() > 0:
+        img /= img.max()
+    return img.astype(np.float32)
+
+
+# ---------------------------------------------------------------------------
+# NEW: 12% — JWST-like PSF crops (6 hexagonal diffraction spikes)
+# ---------------------------------------------------------------------------
+def _jwst_psf(rng: random.Random) -> np.ndarray:
+    """Synthesize a JWST-telescope PSF crop (6 hexagonal diffraction spikes).
+
+    Produces a central core with 6 symmetric spikes at 60° increments,
+    mimicking JWST's NIRCam 6-segment hexagonal mirror with spider vanes.
+    """
+    size = CROP_SIZE
+    yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
+    cx = cy = size / 2.0 - 0.5
+    r = np.hypot(xx - cx, yy - cy)
+    theta = np.arctan2(yy - cy, xx - cx)
+
+    img = np.zeros((size, size), dtype=np.float32)
+
+    # Central core (diffraction-limited NIRCam core).
+    sigma_core = rng.uniform(1.2, 2.5)
+    img += np.exp(-0.5 * (r / sigma_core) ** 2)
+
+    # 6 hexagonal spikes at 60° increments (0, 60, 120, 180, 240, 300 deg).
+    # The spike profile mimics JWST's extended vane diffraction.
+    spike_len = rng.uniform(18.0, 30.0)
+    spike_width = rng.uniform(0.018, 0.040)
+    for k in range(6):
+        spike_angle = k * np.pi / 3  # 60° increments
+        d = np.abs(np.sin(theta - spike_angle))
+        # Create spike using radial profile in the spike direction
+        spike = np.exp(-0.5 * (d / spike_width) ** 2) * (r < spike_len)
+        img += 0.6 * spike
+
+    # Add weak Gaussian noise.
+    img += rng.gauss(0.0, 0.015) * np.ones_like(img)
+    img += np.random.default_rng(rng.randint(0, 2**32)).normal(0, 0.005, img.shape)
+
+    img -= img.min()
+    if img.max() > 0:
+        img /= img.max()
+    return img.astype(np.float32)
+
+
+# ---------------------------------------------------------------------------
 # 20% — pure Gaussian noise
 # ---------------------------------------------------------------------------
 def _gaussian_noise(rng: random.Random) -> np.ndarray:
@@ -116,8 +201,8 @@ def _gaussian_noise(rng: random.Random) -> np.ndarray:
 def _galaxy_crops(galaxy_dir: Path, n_needed: int, rng: random.Random,
                   find_blobs) -> list[np.ndarray]:
     """Extract 64x64 crops from downloaded Legacy Survey galaxy FITS."""
-    from src.preprocessing.loader import load_fits
-    from src.preprocessing.crop_generator import extract_crops
+    from Src.preprocessing.loader import load_fits
+    from Src.preprocessing.crop_generator import extract_crops
 
     crops: list[np.ndarray] = []
     if not galaxy_dir.exists():
@@ -155,15 +240,18 @@ def generate_altro_crops(n_crops: int,
     out_path = out_dir or (CROPS_STAGING_DIR / "altro")
     out_path.mkdir(parents=True, exist_ok=True)
 
-    from src.preprocessing.star_finder import find_stars_png
+    from Src.preprocessing.star_finder import find_stars_png
 
     rng = random.Random(seed)
     n_galaxy = int(n_crops * 0.20)
-    n_noise = int(n_crops * 0.20)
-    n_sat = int(n_crops * 0.20)
-    n_amateur = n_crops - n_galaxy - n_noise - n_sat   # remainder (40%)
+    n_sat = int(n_crops * 0.14)
+    n_noi = int(n_crops * 0.14)
+    n_amateur = int(n_crops * 0.34)
+    n_hubble = int(n_crops * 0.12)
+    n_jwst = int(n_crops * 0.12)
 
-    counts = {"amateur": 0, "satellite": 0, "noise": 0, "galaxy": 0}
+    counts = {"amateur": 0, "satellite": 0, "noise": 0, "galaxy": 0,
+                "hubble": 0, "jwst": 0}
 
     # Real galaxy cutouts first (they may be limited by downloads).
     galaxy_crops = _galaxy_crops(FITS_RAW_DIR / "altro" / "galaxies",
@@ -172,13 +260,29 @@ def generate_altro_crops(n_crops: int,
         np.save(out_path / f"alt_gal_{i:04d}.npy", crop)
     counts["galaxy"] = len(galaxy_crops)
 
-    # Fill any galaxy shortfall with amateur-style PSFs (spec 40% share).
+    # Fill any galaxy shortfall with amateur-style PSFs.
     n_amateur += max(0, n_galaxy - len(galaxy_crops))
+
+    # NEW: Hubble-like PSF crops (4 vane spider spikes).
+    hubble_crops = []
+    for i in range(n_hubble):
+        crop = _hubble_psf(rng)
+        np.save(out_path / f"alt_hub_{i:04d}.npy", crop)
+        hubble_crops.append(crop)
+    counts["hubble"] = len(hubble_crops)
+
+    # NEW: JWST-like PSF crops (6 hexagonal diffraction spikes).
+    jwst_crops = []
+    for i in range(n_jwst):
+        crop = _jwst_psf(rng)
+        np.save(out_path / f"alt_jws_{i:04d}.npy", crop)
+        jwst_crops.append(crop)
+    counts["jwst"] = len(jwst_crops)
 
     generators = {
         "alt_ama": (_amateur_psf, n_amateur),
         "alt_sat": (_satellite_texture, n_sat),
-        "alt_noi": (_gaussian_noise, n_noise),
+        "alt_noi": (_gaussian_noise, n_noi),
     }
     for prefix, (fn, count) in generators.items():
         for i in tqdm(range(count), desc=f"Altro/{prefix}", unit="crop"):

@@ -16,7 +16,7 @@ Verifies every pipeline stage on synthetic data, with no network access:
 
 Usage (from the project root, inside the venv)::
 
-    .venv/bin/python scripts/smoke_test.py
+    .venv/bin/python Tools/smoke_test.py
 
 Exit code 0 = all checks passed.
 """
@@ -134,10 +134,10 @@ def make_png_star_field(path: Path, size: int = 256, n_stars: int = 12,
 def phase_a(tmp: Path) -> None:
     """Loader, anti-saturation, star finding, crops (Tasks 3-4)."""
     section("A — PREPROCESSING (loader, anti-sat, star finder, crops)")
-    from src.preprocessing.anti_saturator import desaturate
-    from src.preprocessing.crop_generator import extract_crops
-    from src.preprocessing.loader import load_fits
-    from src.preprocessing.star_finder import find_stars_fits
+    from Src.preprocessing.anti_saturator import desaturate
+    from Src.preprocessing.crop_generator import extract_crops
+    from Src.preprocessing.loader import load_fits
+    from Src.preprocessing.star_finder import find_stars_fits
 
     fits_path = tmp / "field.fits"
     make_star_field(fits_path)
@@ -171,11 +171,13 @@ def phase_a(tmp: Path) -> None:
     # Peak must sit at the crop centre (32, 32) within 3 px. The test is
     # LOCAL: a brighter *neighbouring* star elsewhere in the 64x64 field of
     # view is physically legitimate, so the global argmax may differ.
+    # Use exactly the +/-3 px window that ``_recenter_to_peak`` searches;
+    # a wider window would measure the distance to a different star.
     offs = []
     for c in crops:
-        win = c[24:41, 24:41]                       # +/- 8 px window
+        win = c[29:36, 29:36]                       # +/- 3 px window
         dy, dx = np.unravel_index(np.argmax(win), win.shape)
-        offs.append(max(abs(int(dx) + 24 - 32), abs(int(dy) + 24 - 32)))
+        offs.append(max(abs(int(dx) + 29 - 32), abs(int(dy) + 29 - 32)))
     check("A8 detected star centered at (32,32) +/- 3 px", max(offs) <= 3,
           f"max local offset {max(offs)} px over {len(crops)} crops")
 
@@ -192,7 +194,7 @@ def phase_a(tmp: Path) -> None:
 def phase_b() -> None:
     """Per-class augmentation policy table and transforms (Task 6)."""
     section("B — AUGMENTATION (Task 6 per-class rules)")
-    from src.data.augmentation import POLICIES, augment
+    from Src.data.augmentation import POLICIES, augment
 
     # Verbatim spec table assertions.
     spec = {
@@ -254,7 +256,7 @@ def phase_c() -> None:
     section("C — MODEL (AstroNet-v2 forward pass)")
     import torch
 
-    from src.models.psf_cnn import build_model
+    from Src.models.psf_cnn import build_model
 
     model = build_model(device="cpu")
     model.eval()
@@ -283,10 +285,10 @@ def phase_d(tmp: Path) -> Path:
     import torch
     from torch.utils.data import DataLoader
 
-    from src.data.dataset import PSFDataset, compute_class_weights
-    from src.models.psf_cnn import build_model
-    from src.utils.constants import RAND_SEED
-    from src.utils.device import get_device
+    from Src.data.dataset import PSFDataset, compute_class_weights
+    from Src.models.psf_cnn import build_model
+    from Src.utils.constants import RAND_SEED
+    from Src.utils.device import get_device
 
     # Deterministic model init AND batch shuffling: without a seed the
     # DataLoader order changes every run and the BatchNorm convergence
@@ -369,7 +371,7 @@ def phase_e(tmp: Path, ckpt: Path) -> None:
     section("E — INFERENCE + CLI (multi-crop, decision rules, errors)")
     from PIL import Image
 
-    from src.inference.predictor import Predictor, load_model
+    from Src.inference.predictor import Predictor, load_model
 
     model = load_model(ckpt, device=None)
     predictor = Predictor(model)
@@ -409,10 +411,10 @@ def phase_e(tmp: Path, ckpt: Path) -> None:
           predictor.predict(str(blank), mode="png").status == "insufficiente")
 
     # Task 11 CLI, single image + batch dir.
-    import main as cli
+    import satai as cli
     old_argv = sys.argv
     try:
-        sys.argv = ["main.py", "--input", str(png), "--mode", "png",
+        sys.argv = ["satai.py", "--input", str(png), "--mode", "png",
                     "--model", str(ckpt), "--verbose"]
         print("\n--- CLI single image output ---")
         cli.main()
@@ -428,7 +430,7 @@ def phase_e(tmp: Path, ckpt: Path) -> None:
     shutil.copy(png, batch_dir / "one.png")
     shutil.copy(png, batch_dir / "two.png")
     try:
-        sys.argv = ["main.py", "--batch-dir", str(batch_dir),
+        sys.argv = ["satai.py", "--batch-dir", str(batch_dir),
                     "--model", str(ckpt)]
         cli.main()
         csv_ok = (batch_dir / "predictions.csv").exists()

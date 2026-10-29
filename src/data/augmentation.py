@@ -21,7 +21,7 @@ import random
 import numpy as np
 from scipy.ndimage import rotate as scipy_rotate
 
-from src.utils.constants import CLASS_NAMES, CROP_SIZE
+from Src.utils.constants import CLASS_NAMES, CROP_SIZE
 
 __all__ = ["POLICIES", "augment", "Augmenter"]
 
@@ -57,6 +57,37 @@ def _rotate(img: np.ndarray, angle: int) -> np.ndarray:
     # 60-degree multiples (JWST / Roman / Euclid hexagonal symmetry).
     return scipy_rotate(img, angle=angle, reshape=False, order=1,
                         mode="nearest").astype(np.float32)
+
+
+#: Probabilità della branchia sharpness (dose calibrata il 14/09: vedi il
+#: commento in ``augment`` — la prima versione era troppo aggressiva).
+SHARPNESS_PROB: float = 0.35
+#: sigma del blur e ampiezza dell'unsharp: abbastanza da coprire il gap
+#: verso i render estremamente nitidi, senza cancellare i tratti di classe.
+SHARPNESS_BLUR_SIGMA: tuple[float, float] = (0.3, 1.0)
+SHARPNESS_UNSHARP: tuple[float, float] = (0.2, 0.5)
+
+
+def _random_sharpness(img: np.ndarray, rng: random.Random) -> np.ndarray:
+    """Random blur or unsharp sharpen (50/50).
+
+    The blur branch spans the gap between the training distribution
+    (FWHM p50 ~7-9 px) and razor-sharp external renders; the unsharp
+    branch covers the opposite direction (softer sources).
+    """
+    from scipy.ndimage import gaussian_filter
+
+    if rng.random() < 0.5:
+        # blur branch
+        lo, hi = SHARPNESS_BLUR_SIGMA
+        sigma = rng.uniform(lo, hi)
+        return gaussian_filter(img, sigma=sigma).astype(np.float32)
+    # unsharp branch: sharpen by pushing high frequencies up
+    blurred = gaussian_filter(img, sigma=1.0)
+    lo, hi = SHARPNESS_UNSHARP
+    amount = rng.uniform(lo, hi)
+    return np.clip(img + amount * (img - blurred),
+                   0.0, 1.0).astype(np.float32)
 
 
 def augment(crop: np.ndarray, class_id: int,
@@ -104,6 +135,18 @@ def augment(crop: np.ndarray, class_id: int,
     noise = np.random.default_rng(rng.randint(0, 2**32)) \
         .normal(0.0, sigma, img.shape).astype(np.float32)
     img = img + noise
+
+    # 6. Sharpness augmentation (fix 14/09: shortcut learning). The model
+    # used image sharpness as a class shortcut — JWST i2d products are
+    # resampled/crisper than Hubble drizzled frames, so any image SHARPER
+    # than the training set (e.g. Flickr full-res renders) flipped Hubble
+    # -> "JWST 99.7%" (causal test: sigma=0.7 px blur on real Hubble crops
+    # flips 95% of the votes to JWST). Dose calibrata: la versione a p=0.5
+    # con sigma fino a 1.5 ha retto alla scorciatoia ma ha costato ~9 punti
+    # di test accuracy (Hubble recall 48%, WISE 27%) — i parametri qui sotto
+    # tengono la robustezza con un costo molto minore.
+    if rng.random() < SHARPNESS_PROB:
+        img = _random_sharpness(img, rng)
 
     return np.clip(img, 0.0, 1.0).astype(np.float32)
 

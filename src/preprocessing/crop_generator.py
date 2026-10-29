@@ -19,14 +19,19 @@ from pathlib import Path
 import numpy as np
 from tqdm import tqdm
 
-from src.utils.constants import (
+from Src.preprocessing.star_finder import estimate_fwhm
+from Src.utils.constants import (
     CROP_CENTER,
+    CROP_FWHM_MAX,
+    CROP_FWHM_MIN,
     CROP_SIZE,
     EDGE_MARGIN,
     MAX_CROPS_PER_IMAGE,
+    MIN_CROP_SNR,
 )
 
-__all__ = ["extract_crops", "generate_crops_for_image", "generate_crops"]
+__all__ = ["extract_crops", "generate_crops_for_image", "generate_crops",
+           "crop_qc_pass"]
 
 
 def _recenter_to_peak(image: np.ndarray, x: float, y: float) -> tuple[int, int] | None:
@@ -45,15 +50,73 @@ def _recenter_to_peak(image: np.ndarray, x: float, y: float) -> tuple[int, int] 
     return x0 + int(dx), y0 + int(dy)
 
 
+def crop_qc_pass(crop: np.ndarray, fwhm_max: float | None = None,
+                 min_snr: float | None = None) -> bool:
+    """Mandatory quality gates applied to every crop before it is saved.
+
+    A crop is rejected when any of these holds (diagnosis 2026-09-13:
+    without these gates 92-97% of the staged crops were extended blobs):
+
+    * the central peak is not significant: SNR < ``min_snr``
+      (default :data:`MIN_CROP_SNR`) against the sigma-clipped sky
+      noise of the crop itself — below ~10 sigma no diffraction
+      structure is visible. Inference relaxes this gate: on an extended
+      galaxy the crop's own std IS the source, so the point-source
+      10-sigma rule would drop every "Altro" candidate;
+    * the source is not point-like: second-moment FWHM estimated on the
+      crop is outside ``[CROP_FWHM_MIN, fwhm_max]`` (a hot pixel
+      or an extended galaxy/cluster core, never a PSF). Training keeps
+      the strict ``CROP_FWHM_MAX``; inference may relax it so extended
+      objects still reach the model and get classified as "Altro";
+    * the 3x3 core around the peak is completely flat: 8+ of 9 pixels
+      within 0.5% of the peak value — a blown star the anti-saturator
+      could not repair (no usable PSF information). A small plateau is
+      normal: the loader clips at the 99.5th percentile (spec 3.1), so
+      bright cores land exactly at 1.0 while the spikes survive below.
+    """
+    from astropy.stats import sigma_clipped_stats
+
+    c = CROP_SIZE // 2
+    peak = float(crop[c, c])
+
+    # 1. Central significance vs the crop's own sky noise.
+    snr_floor = MIN_CROP_SNR if min_snr is None else min_snr
+    _, med, std = sigma_clipped_stats(crop, sigma=3.0)
+    if (peak - float(med)) / (float(std) + 1e-8) < snr_floor:
+        return False
+
+    # 2. Point-like size gate (second-moment FWHM at half maximum).
+    fmax = CROP_FWHM_MAX if fwhm_max is None else fwhm_max
+    fwhm = estimate_fwhm(crop, c, c)
+    if fwhm is None or not (CROP_FWHM_MIN <= fwhm <= fmax):
+        return False
+
+    # 3. Blown core: the whole 3x3 plateau is at the ceiling.
+    core3 = crop[c - 1:c + 2, c - 1:c + 2]
+    if int((core3 >= 0.995 * peak).sum()) >= 8:
+        return False
+
+    return True
+
+
 def extract_crops(image: np.ndarray,
                   positions: np.ndarray,
-                  max_crops: int = MAX_CROPS_PER_IMAGE) -> np.ndarray:
+                  max_crops: int = MAX_CROPS_PER_IMAGE,
+                  fwhm_max: float | None = None,
+                  min_snr: float | None = None) -> np.ndarray:
     """Extract up to ``max_crops`` centered 64x64 crops from an image.
+
+    Every candidate passes the :func:`crop_qc_pass` gates (SNR, FWHM,
+    saturation) before being accepted.
 
     Args:
         image: float32 image (any size >= 64x64).
         positions: ``(N, 2)`` array of ``(x, y)`` candidate star centers.
         max_crops: maximum number of crops returned (spec: 20 per image).
+        fwhm_max: optional relaxed FWHM ceiling (inference uses it so
+            extended objects reach the model instead of being dropped).
+        min_snr: optional relaxed SNR floor (inference: extended sources
+            inflate the crop's own std, see :func:`crop_qc_pass`).
 
     Returns:
         ``(M, 64, 64)`` float32 array with ``0 <= M <= max_crops``.
@@ -78,6 +141,8 @@ def extract_crops(image: np.ndarray,
 
         crop = img[py - half:py + half, px - half:px + half]
         if crop.shape != (CROP_SIZE, CROP_SIZE):
+            continue
+        if not crop_qc_pass(crop, fwhm_max=fwhm_max, min_snr=min_snr):
             continue
         crops.append(crop)
 
@@ -123,15 +188,15 @@ def generate_crops(image_paths: list[str | Path],
     Args:
         image_paths: list of FITS file paths.
         finder: callable ``image -> (N, 2)`` positions
-            (e.g. :func:`src.preprocessing.star_finder.find_stars_fits`).
+            (e.g. :func:`Src.preprocessing.star_finder.find_stars_fits`).
         out_dir: destination directory for the ``.npy`` crops.
         max_crops: cap on crops per source image.
 
     Returns:
         Total number of crops saved.
     """
-    from src.preprocessing.anti_saturator import desaturate
-    from src.preprocessing.loader import load_fits
+    from Src.preprocessing.anti_saturator import desaturate
+    from Src.preprocessing.loader import load_fits
 
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)

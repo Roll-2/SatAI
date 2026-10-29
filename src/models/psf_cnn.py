@@ -31,7 +31,7 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
-from src.utils.constants import NUM_CLASSES
+from Src.utils.constants import NUM_CLASSES
 
 __all__ = ["AstroNetV2", "build_model"]
 

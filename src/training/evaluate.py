@@ -7,7 +7,7 @@ remediation hints.
 
 Usage (from the project root)::
 
-    python -m src.training.evaluate
+    python -m Src.training.evaluate
 """
 
 from __future__ import annotations
@@ -17,16 +17,17 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.data.dataset import PSFDataset
-from src.models.psf_cnn import build_model
-from src.utils.constants import (
+from Src.data.dataset import PSFDataset
+from Src.models.psf_cnn import build_model
+from Src.utils.constants import (
     BEST_MODEL_PATH,
     CLASS_NAMES,
     NUM_CLASSES,
+    NUM_WORKERS,
     PNG_SAMPLES_DIR,
     RAND_SEED,
 )
-from src.utils.device import configure_hardware, dataloader_kwargs
+from Src.utils.device import configure_hardware, dataloader_kwargs
 
 __all__ = ["evaluate", "classification_report"]
 
@@ -98,7 +99,7 @@ def evaluate(model_path=BEST_MODEL_PATH,
     """Evaluate the saved model and print/save all Task 9 metrics.
 
     Args:
-        model_path: checkpoint produced by :func:`src.training.train.train`.
+        model_path: checkpoint produced by :func:`Src.training.train.train`.
         split: dataset split to evaluate (default ``test``).
         batch_size: override the default batch size.
 
@@ -113,7 +114,7 @@ def evaluate(model_path=BEST_MODEL_PATH,
     if len(dataset) == 0:
         raise RuntimeError(
             f"No crops found for split '{split}'. "
-            "Run 'python -m src.data.build_dataset' first.")
+            "Run 'python -m Src.data.build_dataset' first.")
 
     kwargs = dataloader_kwargs(NUM_WORKERS)
     if len(dataset) < 2 * kwargs["batch_size"]:

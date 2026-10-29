@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 from scipy.ndimage import median_filter
 
-from src.utils.constants import MEDIAN_FILTER_SIZE, SATURATION_THRESHOLD
+from Src.utils.constants import MEDIAN_FILTER_SIZE, SATURATION_THRESHOLD
 
 __all__ = ["desaturate"]
 

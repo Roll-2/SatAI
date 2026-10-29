@@ -2,10 +2,46 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Callable, Iterable
 
 from astropy.io import fits
+
+#: JWST EXP_TYPE fragments that mark a spectroscopic product (grisms,
+#: slit/slitless spectra, MRS/LRS). Imaging-only classes must reject them.
+_SPECTRO_EXP_TYPE = re.compile(r"SPEC|GRISM|MRS|LRS|WFSS", re.IGNORECASE)
+
+#: HST grism/prism FILTER values (ACS G800L, WFC3 G102/G141, ...).
+_HST_GRATING_FILTER = re.compile(r"^G\d+[LM]?$", re.IGNORECASE)
+
+
+def is_spectroscopy_product(path: Path) -> bool:
+    """True when a FITS file is a spectroscopic product, not an image.
+
+    Checks the EXP_TYPE keyword (JWST: NRS_*, MIR_MRS, MIR_LRS-*,
+    NIS_WFSS, NRC_GRISM, ...) and the FILTER keyword (HST gratings:
+    G800L, G102, G141; JWST slit gratings like P750L). Files whose
+    header cannot be read count as spectroscopic (rejected).
+    """
+    try:
+        with fits.open(path, memmap=True) as hdul:
+            hdr0 = hdul[0].header
+            exp_type = str(hdr0.get("EXP_TYPE") or "")
+            if _SPECTRO_EXP_TYPE.search(exp_type):
+                return True
+            for hdu in hdul:
+                filt = str(hdu.header.get("FILTER") or "")
+                # HST FILTER may be a semicolon-separated list.
+                for token in filt.split(";"):
+                    token = token.strip()
+                    if _HST_GRATING_FILTER.match(token):
+                        return True
+                    if token.upper() in {"P750L", "LRS", "MRS"}:
+                        return True
+    except OSError:
+        return True
+    return False
 
 
 def has_image_data(path: Path) -> bool:

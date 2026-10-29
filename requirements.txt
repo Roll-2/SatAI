@@ -1,20 +1,24 @@
 # SatAi — AstroNet-v2
-# Target: Python 3.10+ (verified on Python 3.14 / Homebrew arm64)
-# All packages below ship prebuilt macosx arm64 wheels on PyPI:
-# no compilation and no `brew install cfitsio` workaround is required.
+# Verified in the project .venv on 2026-10-29:
+#   Python 3.9.6 (macOS arm64), torch 2.8.0 with MPS.
+# All packages below have prebuilt macosx arm64 wheels on PyPI: no compiler
+# and no `brew install cfitsio` workaround is needed.
 # torch/torchvision from PyPI include the MPS (Metal) backend by default.
 
-torch==2.14.0
-torchvision==0.29.0
-# numpy 2.3.5, NOT 2.4+/2.5+: `np.in1d` was removed from numpy 2.4 while
-# astropy 7.1.1 (newest cp314 build) still calls it — numpy >= 2.4 crashes
-# every astropy.stats / astropy.units import (and therefore astroquery too).
-numpy==2.3.5
-scipy==1.18.1
-astropy==7.1.1
-photutils==2.3.0
-scikit-image==0.26.0
-Pillow==12.3.0
-matplotlib==3.11.1
-tqdm==4.70.0
+torch==2.8.0
+torchvision==0.23.0
+numpy==1.26.4
+scipy==1.13.1
+astropy==6.0.1
+photutils==1.11.0
+scikit-image==0.24.0
+Pillow==11.3.0
+matplotlib==3.9.4
+tqdm==4.70.1
 astroquery==0.4.11
+pywebview==6.2.1
+
+# CoreML export / Apple Neural Engine inference. macOS only; skipped
+# automatically on Linux/Windows. coremltools 9.0 is the version used to
+# build and verify Models/AstroNetV2.mlpackage.
+coremltools==9.0; sys_platform == "darwin"

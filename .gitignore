@@ -1,18 +1,18 @@
 # =============================================================================
 # SatAi — .gitignore
-# Principio: nel repository entrano SOLO codice e documenti. Tutto ciò che
-# la pipeline scarica, genera o addestra è riproducibile con i comandi del
-# README, può pesare molti GB e non deve mai finire in git.
+# Principle: only source, documents and empty markers enter git. Everything the
+# pipeline downloads, generates or trains is reproducible and can weigh GBs.
 # =============================================================================
 
-# ---------- Ambienti virtuali ----------
+# ---------- Virtual environments ----------
 .venv/
 venv/
 env/
 .ENV/
 
-# ---------- Cache Python ----------
+# ---------- Python caches ----------
 __pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
@@ -21,29 +21,34 @@ __pycache__/
 .coverage
 htmlcov/
 
-# ---------- Dati della pipeline (FITS, crop, staging) ----------
-# L'intera cartella data/ è generata da:
-#   python -m src.acquisition.run_all
-#   python -m src.data.build_dataset
-data/**
-!data/
-!data/fits_raw/
-!data/fits_raw/.gitkeep
-!data/png_samples/
-!data/png_samples/.gitkeep
+# ---------- Pipeline data (FITS, crops, validation images) ----------
+Data/**
+!Data/
+!Data/fits_raw/
+!Data/fits_raw/.gitkeep
+!Data/png_samples/
+!Data/png_samples/.gitkeep
+!Data/ui_uploads/
+!Data/ui_uploads/.gitkeep
+!Data/ui_uploads/.gitkeep
 
-# ---------- Modelli addestrati e checkpoint ----------
-# Generati da: python -m src.training.train
-models_saved/**
-!models_saved/
-!models_saved/.gitkeep
+# ---------- Trained models and checkpoints ----------
+Models/**
+!Models/
+!Models/.gitkeep
+!Models/README.md
 *.pt
 *.pth
 *.ckpt
 *.safetensors
+*.mlmodel
+*.mlpackage
+*.mlpackage/**
 
-# ---------- Immagini e foto (MAI committare) ----------
-# Vale a livello globale: nessuna immagine in nessuna sottocartella.
+# ---------- Local review folder (nothing is deleted automatically) ----------
+Trash/
+
+# ---------- Images and photos (never commit) ----------
 *.png
 *.jpg
 *.jpeg
@@ -65,7 +70,7 @@ models_saved/**
 *.nef
 *.arw
 
-# ---------- File astronomici e array scientifici ----------
+# ---------- Astronomy / scientific arrays ----------
 *.fits
 *.fit
 *.fts
@@ -81,15 +86,16 @@ models_saved/**
 *.vot
 *.xml
 
-# ---------- Output generati (report, metriche, batch) ----------
+# ---------- Generated output ----------
 *.csv
 *.tsv
 *.log
 predictions*.csv
 evaluation_report.txt
 confusion_matrix.png
+reports/
 
-# ---------- Cache strumenti astronomici ----------
+# ---------- Astronomy caches ----------
 .astropy/
 astroquery/
 .ipynb_checkpoints/
@@ -103,7 +109,7 @@ astroquery/
 .project
 .settings/
 
-# ---------- Sistema operativo ----------
+# ---------- OS ----------
 .DS_Store
 .DS_Store?
 ._*
@@ -112,5 +118,29 @@ astroquery/
 Thumbs.db
 desktop.ini
 
-# ---------- Workspace strumenti locali ----------
+# ---------- Local tools workspace ----------
 .freebuff/
+
+# ---------- Desktop app local settings (OpenRouter key — secret) ----------
+# Kept in Config/ since the root was getting crowded; the bare pattern also
+# covers a legacy settings.local.json at the project root.
+Config/settings.local.json
+settings.local.json
+
+# ---------- Generated app bundle and icons (rebuild: Tools/make_app.py) ----------
+SatAi.app/
+assets/
+# ...except the brand logo source of truth, which must be versioned:
+!assets/
+!assets/branding/
+!assets/branding/SatAI_logo.png
+# ...and the small header copy used by the UI:
+!App/ui/logo.png
+
+# ---------- 3D visualization ----------
+# The 216 frame PNG sequence is a large, regenerable render cache.
+Visuals/renders/
+Visuals/*.blend1
+# These two stills are documentation assets, not throwaway renders.
+!Visuals/satai_network_3d_wide.png
+!Visuals/satai_network_3d_head.png

@@ -1,8 +1,8 @@
 """PyTorch dataset for PSF crops (Tasks 5.3, 6 and 8.2).
 
 ``PSFDataset`` loads individual ``.npy`` crops from
-``data/crops/<split>/<class_folder>/`` and applies the per-class
-augmentation policy from :mod:`src.data.augmentation` on the fly.
+``Data/crops/<split>/<class_folder>/`` and applies the per-class
+augmentation policy from :mod:`Src.data.augmentation` on the fly.
 """
 
 from __future__ import annotations
@@ -13,13 +13,14 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-from src.data.augmentation import Augmenter
-from src.utils.constants import (
+from Src.data.augmentation import Augmenter
+from Src.utils.constants import (
     CLASS_FOLDERS,
     CROP_SIZE,
     TEST_DIR,
     TRAIN_DIR,
     VAL_DIR,
+    NUM_WORKERS,
 )
 
 __all__ = ["PSFDataset", "load_split", "compute_class_weights", "SPLIT_DIRS"]
@@ -121,5 +122,10 @@ def compute_class_weights(labels: list[int],
             weights[c] = counts.max() if counts.max() > 0 else 1.0
         else:
             weights[c] = total / (num_classes * counts[c])
-    weights /= max(weights.mean(), 1e-12)
+    # Normalizza sulla media delle SOLE classi presenti: le classi vuote
+    # (peso massimo by design, nessun campione) non devono gonfiare la
+    # media e schiacciare i pesi reali a ~0.001 (bug osservato in log:
+    # 4 classi vuote -> pesi reali ~0, loss di fatto non bilanciata).
+    present = counts > 0
+    weights /= max(weights[present].mean(), 1e-12)
     return torch.tensor(weights, dtype=torch.float32)

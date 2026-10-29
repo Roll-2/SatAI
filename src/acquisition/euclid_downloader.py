@@ -16,7 +16,7 @@ Verified live against the ESA Euclid Science Archive (astroquery 0.4.11):
 
 Usage::
 
-    from src.acquisition.euclid_downloader import download_euclid
+    from Src.acquisition.euclid_downloader import download_euclid
     download_euclid(n_images=3)
 """
 
@@ -26,7 +26,7 @@ import random
 import urllib.request
 from pathlib import Path
 
-from src.utils.constants import FITS_RAW_DIR, RAND_SEED
+from Src.utils.constants import FITS_RAW_DIR, RAND_SEED
 
 #: Public Q1 fields as (tag, ra_min, ra_max, dec_min, dec_max) ADQL boxes.
 _EDF_BOXES: list[tuple[str, float, float, float, float]] = [
@@ -72,7 +72,7 @@ def download_euclid(n_images: int, out_dir: Path | None = None) -> int:
     Args:
         n_images: target number of FITS files. WARNING: ~7 GB per file —
             3-5 frames are already enough for the 5000-crop class target.
-        out_dir: destination (default ``data/fits_raw/euclid``).
+        out_dir: destination (default ``Data/fits_raw/euclid``).
 
     Returns:
         Number of FITS files written.

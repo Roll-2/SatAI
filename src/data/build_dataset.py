@@ -1,20 +1,21 @@
 """Build the 9-class crop dataset (Task 5).
 
 Pipeline:
-  1. **Crops** — for every telescope folder in ``data/fits_raw/<class>/``
+  1. **Crops** — for every telescope folder in ``Data/fits_raw/<class>/``
      (classes 0-7), run the loader + FITS star finder + crop generator
-     and stage the crops in ``data/crops/staging/<class>/``.
+     and stage the crops in ``Data/crops/staging/<class>/``.
   2. **Altro** — class 8 is generated synthetically by
-     :func:`src.acquisition.altro_generator.generate_altro_crops`.
+     :func:`Src.acquisition.altro_generator.generate_altro_crops`.
   3. **Split** — stratified 70% train / 15% val / 15% test per class
-     (spec 5.3), materialized into ``data/crops/{train,val,test}/<class>/``.
+     (spec 5.3), materialized into ``Data/crops/{train,val,test}/<class>/``.
 
 Usage (from the project root)::
 
-    python -m src.data.build_dataset --n-per-class 5000
+    python -m Src.data.build_dataset --n-per-class 5000
 """
 
 from __future__ import annotations
+import numpy as np
 
 import argparse
 import random
@@ -23,11 +24,11 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from src.preprocessing.anti_saturator import desaturate
-from src.preprocessing.crop_generator import generate_crops_for_image
-from src.preprocessing.loader import load_fits
-from src.preprocessing.star_finder import find_stars_fits
-from src.utils.constants import (
+from Src.preprocessing.anti_saturator import desaturate
+from Src.preprocessing.crop_generator import generate_crops_for_image
+from Src.preprocessing.loader import load_fits
+from Src.preprocessing.star_finder import find_stars_fits
+from Src.utils.constants import (
     CLASS_FOLDERS,
     CROPS_STAGING_DIR,
     FITS_RAW_DIR,
@@ -40,8 +41,6 @@ from src.utils.constants import (
 __all__ = ["stage_crops_for_class", "build_dataset"]
 
 SPLIT_FRACTIONS = (0.70, 0.15, 0.15)   # train / val / test (spec 5.3)
-
-
 def stage_crops_for_class(class_id: int,
                           n_per_class: int,
                           max_crops_per_image: int = 20) -> int:
@@ -55,49 +54,89 @@ def stage_crops_for_class(class_id: int,
     Returns:
         Number of crops staged for this class.
     """
+    import random
+    from Src.acquisition.altro_generator import _hubble_psf, _jwst_psf
+
     folder = CLASS_FOLDERS[class_id]
     fits_dir = FITS_RAW_DIR / folder
     out_dir = CROPS_STAGING_DIR / folder
 
-    if not fits_dir.exists() or not any(fits_dir.glob("*.fits")):
-        print(f"[{folder}] no FITS files found in {fits_dir} — skipped. "
-              f"Run 'python -m src.acquisition.run_all' first "
-              f"(roman/rubin/gaia may need manual drops).")
-        return 0
+    # Ensure output directory exists
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    existing = len(list(out_dir.glob("*.npy"))) if out_dir.exists() else 0
-    if existing >= n_per_class:
-        print(f"[{folder}] staging already has {existing} crops — skipped.")
-        return existing
+    # Check for real FITS files
+    has_fits = fits_dir.exists() and any(fits_dir.glob("*.fits"))
 
-    fits_files = sorted(fits_dir.rglob("*.fits"))
-    total = existing
-    for idx, fpath in enumerate(tqdm(fits_files, desc=f"Crops/{folder}",
-                                     unit="img")):
-        if total >= n_per_class:
-            break
-        try:
-            # Task 3.2: anti-saturation is mandatory for FITS with bright
-            # stars, before star finding and cropping.
-            img = desaturate(load_fits(fpath))
-            positions = find_stars_fits(img)
-            # Indexed prefix: files with the same stem in different
-            # subfolders must not overwrite each other's crops.
-            saved = generate_crops_for_image(
-                img, positions, out_dir, prefix=f"{idx:05d}_{fpath.stem}",
-                max_crops=max_crops_per_image)
-            total += len(saved)
-        except Exception as exc:  # noqa: BLE001 — skip corrupt sources
-            print(f"[skip] {fpath.name}: {exc}")
+    # STAGE real FITS crops if available
+    if has_fits:
+        existing = len(list(out_dir.glob(".npy"))) if out_dir.exists() else 0
+        if existing >= n_per_class:
+            print(f"[{folder}] staging already has {existing} crops — skipped.")
+            return existing
+
+        fits_files = sorted(fits_dir.rglob("*.fits"))
+        total = existing
+        for idx, fpath in enumerate(tqdm(fits_files, desc=f"Crops/{folder}", unit="img")):
+            if total >= n_per_class:
+                break
+            try:
+                # Task 3.2: anti-saturation is mandatory for FITS with bright
+                # stars, before star finding and cropping.
+                img = desaturate(load_fits(fpath))
+                positions = find_stars_fits(img, telescope=folder)
+                # Indexed prefix: files with the same stem in different
+                # subfolders must not overwrite each other's crops.
+                saved = generate_crops_for_image(
+                    img, positions, out_dir, prefix=f"{idx:05d}_{fpath.stem}",
+                    max_crops=max_crops_per_image)
+                total += len(saved)
+            except Exception as exc:  # noqa: BLE001 — skip corrupt sources
+                print(f"[skip] {fpath.name}: {exc}")
+    else:
+        total = 0
+        print(f"[{folder}] no FITS files found — will generate synthetic crops only.")
+
+    # NEW: Add synthetic Hubble-like PSF crops to the Hubble class (class 0)
+    # These contain the 4-vane spider spike pattern that distinguishes HST from others.
+    # Run regardless of whether real FITS were available, to ensure the model
+    # always sees the distinctive spike pattern during training.
+    if folder == "hubble":
+        rng = random.Random(RAND_SEED)
+        hubble_crops_dir = CROPS_STAGING_DIR / folder / "synthetic_spikes"
+        hubble_crops_dir.mkdir(parents=True, exist_ok=True)
+        # Count existing synthetic crops
+        existing_hubble = len(list(hubble_crops_dir.glob(".npy")))
+        n_synthetic = max(0, n_per_class - existing_hubble - total)
+        for i in range(n_synthetic):
+            crop = _hubble_psf(rng)
+            np.save(hubble_crops_dir / f"synth_spike_{i:04d}.npy", crop)
+        total += n_synthetic
+
+    # NEW: Add synthetic JWST-like PSF crops to the JWST class (class 1)
+    # These contain the 6-hexagonal spike pattern that distinguishes JWST from others.
+    # Run regardless of whether real FITS were available, to ensure the model
+    # always sees the distinctive spike pattern during training.
+    if folder == "jwst":
+        rng = random.Random(RAND_SEED + 1)
+        jwst_crops_dir = CROPS_STAGING_DIR / folder / "synthetic_spikes"
+        jwst_crops_dir.mkdir(parents=True, exist_ok=True)
+        # Count existing synthetic crops
+        existing_jwst = len(list(jwst_crops_dir.glob(".npy")))
+        n_synthetic = max(0, n_per_class - existing_jwst - total)
+        for i in range(n_synthetic):
+            crop = _jwst_psf(rng)
+            np.save(jwst_crops_dir / f"synth_spike_{i:04d}.npy", crop)
+        total += n_synthetic
+
     print(f"[{folder}] staged {total} crops.")
     return total
-
 
 def _stratified_split(class_id: int, n_per_class: int) -> dict[str, int]:
     """Split one class's staged crops into train/val/test directories."""
     folder = CLASS_FOLDERS[class_id]
     src_dir = CROPS_STAGING_DIR / folder
-    files = sorted(src_dir.glob("*.npy")) if src_dir.exists() else []
+    # Search recursively to find crops in subdirectories like synthetic_spikes/
+    files = sorted(src_dir.glob("**/*.npy")) if src_dir.exists() else []
     if not files:
         print(f"[{folder}] nothing staged — split skipped.")
         return {"train": 0, "val": 0, "test": 0}
@@ -144,7 +183,7 @@ def build_dataset(n_per_class: int = 5000) -> dict[str, dict[str, int]]:
     have_altro = len(list(altro_dir.glob("*.npy"))) if altro_dir.exists() else 0
     if have_altro < n_per_class:
         print(f"\n=== Generating class-8 'Altro' ({n_per_class} crops) ===")
-        from src.acquisition.altro_generator import generate_altro_crops
+        from Src.acquisition.altro_generator import generate_altro_crops
         counts = generate_altro_crops(n_per_class, out_dir=altro_dir)
         print(f"[Altro] generated: {counts}")
 

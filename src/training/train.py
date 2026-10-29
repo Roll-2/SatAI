@@ -8,7 +8,7 @@ Loss (Task 8.2): CrossEntropyLoss with inverse-frequency class weights.
 
 Usage (from the project root)::
 
-    python -m src.training.train
+    python -m Src.training.train
 """
 
 from __future__ import annotations
@@ -20,9 +20,11 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.data.dataset import PSFDataset, compute_class_weights
-from src.models.psf_cnn import build_model
-from src.utils.constants import (
+from Src.data.dataset import PSFDataset, compute_class_weights
+from Src.models.psf_cnn import build_model
+import gc
+
+from Src.utils.constants import (
     ADAM_BETAS,
     ADAM_EPS,
     BATCH_SIZE,
@@ -38,7 +40,7 @@ from src.utils.constants import (
     RAND_SEED,
     WEIGHT_DECAY,
 )
-from src.utils.device import configure_hardware, dataloader_kwargs
+from Src.utils.device import configure_hardware, dataloader_kwargs
 
 __all__ = ["train", "main"]
 
@@ -135,7 +137,7 @@ def train(max_epochs: int = MAX_EPOCHS,
     best_val_acc = -1.0
     epochs_without_improvement = 0
 
-    for epoch in range(1, MAX_EPOCHS + 1):
+    for epoch in range(1, max_epochs + 1):
         t0 = time.time()
         train_loss, train_acc, _ = _run_epoch(
             model, train_loader, criterion, optimizer, device, train=True)
@@ -168,7 +170,7 @@ def train(max_epochs: int = MAX_EPOCHS,
                    LAST_MODEL_PATH)
 
         lr_now = optimizer.param_groups[0]["lr"]
-        print(f"Epoch {epoch:02d}/{MAX_EPOCHS} "
+        print(f"Epoch {epoch:02d}/{max_epochs} "
               f"({time.time() - t0:.0f}s) | "
               f"train_loss {train_loss:.4f} acc {train_acc:.4f} | "
               f"val_loss {val_loss:.4f} acc {val_acc:.4f} | "
@@ -180,6 +182,13 @@ def train(max_epochs: int = MAX_EPOCHS,
             print(f"Early stopping: no val_accuracy improvement for "
                   f"{EARLY_STOPPING_PATIENCE} epochs.")
             break
+
+        # Libera la cache MPS dopo ogni epoca per evitare accumulo di
+        # memoria GPU durante training prolungato (il modello è piccolo,
+        # ma i DataLoader con worker possono accumulare buffer temporanei).
+        if device.type == "mps":
+            torch.mps.empty_cache()
+            gc.collect()
 
     print(f"\nBest val_accuracy: {best_val_acc:.4f}")
     print(f"Best model:    {BEST_MODEL_PATH}")

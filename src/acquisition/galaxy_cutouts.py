@@ -8,7 +8,7 @@ images dominated by galaxies rather than point sources, used for the
 
 Usage::
 
-    from src.acquisition.galaxy_cutouts import download_galaxies
+    from Src.acquisition.galaxy_cutouts import download_galaxies
     download_galaxies(n_images=100)
 """
 
@@ -19,7 +19,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-from src.utils.constants import FITS_RAW_DIR, RAND_SEED
+from Src.utils.constants import FITS_RAW_DIR, RAND_SEED
 
 CUTOUT_URL = ("https://www.legacysurvey.org/viewer/fits-cutout"
               "?ra={ra:.5f}&dec={dec:.5f}&size={size}&layer={layer}")
@@ -49,7 +49,7 @@ def download_galaxies(n_images: int,
 
     Args:
         n_images: target number of cutouts.
-        out_dir: destination (default ``data/fits_raw/altro/galaxies``).
+        out_dir: destination (default ``Data/fits_raw/altro/galaxies``).
         layer: Legacy Survey data layer (``ls-dr10`` or ``ls-dr9``).
         size: cutout size in pixels.
 

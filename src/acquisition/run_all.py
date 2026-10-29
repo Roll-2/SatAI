@@ -2,25 +2,25 @@
 
 Usage (from the project root)::
 
-    python -m src.acquisition.run_all                     # all archives
-    python -m src.acquisition.run_all --telescope hubble  # one archive
-    python -m src.acquisition.run_all --altro             # class 8 synthetic
-    python -m src.acquisition.run_all --n 100             # per-archive count
+    python -m Src.acquisition.run_all                     # all archives
+    python -m Src.acquisition.run_all --telescope hubble  # one archive
+    python -m Src.acquisition.run_all --altro             # class 8 synthetic
+    python -m Src.acquisition.run_all --n 100             # per-archive count
 """
 
 from __future__ import annotations
 
 import argparse
 
-from src.utils.constants import FITS_RAW_DIR
+from Src.utils.constants import FITS_RAW_DIR
 
 # (folder, downloader module attribute, missing-data note)
 MISSING_NOTE = {
     "roman": "Roman has no public data before launch (2027) — folder left empty.",
     "rubin": "Rubin RSP access is credential-gated until the public release — "
-             "drop FITS files manually into data/fits_raw/rubin/.",
+             "drop FITS files manually into Data/fits_raw/rubin/.",
     "gaia": "Gaia publishes catalogs only (no 2-D image products) — drop FITS "
-            "files manually into data/fits_raw/gaia/ if you have them.",
+            "files manually into Data/fits_raw/gaia/ if you have them.",
 }
 DOWNLOADABLE = ["hubble", "jwst", "spitzer", "wise", "euclid"]
 
@@ -48,19 +48,19 @@ def main() -> None:
         print(f"\n=== Downloading {name} ({args.n} files) ===")
         try:
             if name == "hubble":
-                from src.acquisition.mast_downloader import download_hubble
+                from Src.acquisition.mast_downloader import download_hubble
                 n = download_hubble(args.n)
             elif name == "jwst":
-                from src.acquisition.mast_downloader import download_jwst
+                from Src.acquisition.mast_downloader import download_jwst
                 n = download_jwst(args.n)
             elif name == "spitzer":
-                from src.acquisition.irsa_downloader import download_spitzer
+                from Src.acquisition.irsa_downloader import download_spitzer
                 n = download_spitzer(args.n)
             elif name == "wise":
-                from src.acquisition.irsa_downloader import download_wise
+                from Src.acquisition.irsa_downloader import download_wise
                 n = download_wise(args.n)
             else:  # euclid
-                from src.acquisition.euclid_downloader import download_euclid
+                from Src.acquisition.euclid_downloader import download_euclid
                 n = download_euclid(args.n)
             print(f"[{name}] wrote {n} FITS files.")
         except Exception as exc:  # noqa: BLE001
@@ -68,8 +68,8 @@ def main() -> None:
 
     if args.altro:
         print(f"\n=== Generating class-8 'Altro' crops ({args.altro_n}) ===")
-        from src.acquisition.galaxy_cutouts import download_galaxies
-        from src.acquisition.altro_generator import generate_altro_crops
+        from Src.acquisition.galaxy_cutouts import download_galaxies
+        from Src.acquisition.altro_generator import generate_altro_crops
 
         n_gal = max(10, int(args.altro_n * 0.20 // 8))   # enough cutouts
         got = download_galaxies(n_gal)

@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>SatAi</title>
+<style>
+  :root {
+    --bg: #0b0f1a;
+    --panel: #141b2d;
+    --panel-2: #1a2338;
+    --text: #e8ecf6;
+    --dim: #8b94ab;
+    --accent: #7aa2f7;
+    --chip-a: #b9a7f5;
+    --chip-b: #8fd7b4;
+    --danger: #f08f8f;
+    --cloud: #f5a623;        /* spinner: cloud/remote inference (OpenRouter) */
+    --cyan: #67e7ff;
+    --radius: 14px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: radial-gradient(1200px 600px at 70% -10%, #17203a 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    display: flex; flex-direction: column;
+    padding: 18px 18px 16px;
+    gap: 12px;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  header { display: flex; align-items: center; gap: 8px; padding: 2px 4px 0; }
+  header img { width: 21px; height: 21px; border-radius: 50%; flex: none;
+    box-shadow: 0 0 0 1px rgba(122,162,247,.25); }
+  header h1 { font-size: 17px; font-weight: 700; letter-spacing: .2px; }
+  header span { font-size: 11.5px; color: var(--dim); }
+  #visual {
+    margin-left: auto; border: 1px solid rgba(103, 231, 255, .35);
+    background: rgba(103, 231, 255, .10); color: #9feaff;
+    border-radius: 999px; padding: 5px 10px; font-size: 11px;
+    font-weight: 650; letter-spacing: .02em; cursor: pointer;
+    font-family: inherit; white-space: nowrap; transition: .15s;
+  }
+  #visual:hover { background: rgba(103, 231, 255, .20); border-color: var(--cyan); }
+  #visual:disabled { opacity: .55; cursor: default; }
+  header h1, header span { white-space: nowrap; }
+
+  /* ---------- drop zone (2/3 of the window) ---------- */
+  #dropzone {
+    flex: 0 0 62%;
+    border: 2px dashed rgba(122, 162, 247, .45);
+    border-radius: var(--radius);
+    background: rgba(122, 162, 247, .05);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 10px; cursor: pointer; position: relative; overflow: hidden;
+    transition: border-color .15s, background .15s;
+  }
+  #dropzone.drag { border-color: var(--accent); background: rgba(122,162,247,.12); }
+  #dropzone svg { width: 46px; height: 46px; opacity: .85; }
+  #dz-hint { text-align: center; }
+  #dz-hint b { display: block; font-size: 14.5px; font-weight: 600; }
+  #dz-hint small { color: var(--dim); font-size: 11.5px; }
+  #preview {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: contain; display: none; background: #05070d;
+  }
+  #fits-badge {
+    display: none; position: absolute; inset: 0;
+    flex-direction: column; align-items: center; justify-content: center;
+    background: #05070d; gap: 8px;
+  }
+  #fits-badge .tag {
+    border: 1px solid var(--accent); color: var(--accent);
+    border-radius: 8px; padding: 3px 10px; font-size: 12px; font-weight: 700;
+    letter-spacing: 2px;
+  }
+  #fits-badge .fname { color: var(--dim); font-size: 11px; max-width: 90%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #clear-btn {
+    display: none; position: absolute; top: 10px; right: 10px;
+    background: rgba(0,0,0,.55); color: var(--text); border: none;
+    width: 26px; height: 26px; border-radius: 50%; font-size: 13px;
+    cursor: pointer; z-index: 5;
+  }
+
+  /* ---------- response box ---------- */
+  #answer {
+    flex: 1 1 auto;
+    min-height: 120px;
+    background: var(--panel);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    display: flex; flex-direction: column; gap: 8px;
+    overflow-y: auto;
+  }
+  #answer .placeholder { color: var(--dim); font-size: 13px; }
+  .spinner {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 2.5px solid rgba(122,162,247,.25);
+    border-top-color: var(--accent);
+    animation: spin .8s linear infinite;
+    margin: 2px 0;
+  }
+  .spinner.cloud {
+    border-top-color: var(--cloud);
+    border-color: rgba(245, 166, 35, .25);
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .working { display: flex; align-items: center; gap: 10px; color: var(--dim); font-size: 13px; }
+  #sentence { font-size: 14.5px; line-height: 1.45; font-weight: 500; }
+  #err { color: var(--danger); font-size: 13px; line-height: 1.4; }
+  #detail { margin-top: 2px; }
+  .confrow { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--dim); margin: 3px 0; }
+  .confrow .nm { width: 64px; flex: none; }
+  .bar { flex: 1; height: 6px; background: rgba(255,255,255,.07); border-radius: 3px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: linear-gradient(90deg, #7aa2f7, #b9a7f5); border-radius: 3px; }
+  .confrow .pc { width: 44px; text-align: right; flex: none; }
+  #extra { font-size: 13px; line-height: 1.5; color: var(--text); white-space: pre-wrap; }
+
+  /* ---------- chips ---------- */
+  #chips { display: none; gap: 8px; }
+  .chip {
+    flex: 1; border: none; border-radius: 12px;
+    padding: 9px 10px; font-size: 12px; font-weight: 600;
+    color: #0b0f1a; cursor: pointer; transition: filter .15s;
+  }
+  .chip:hover { filter: brightness(1.08); }
+  .chip:disabled { opacity: .55; cursor: default; }
+  #chip-cosa { background: var(--chip-a); }
+  #chip-perche { background: var(--chip-b); }
+
+  /* ---------- inline key form ---------- */
+  #keyform { display: none; flex-direction: column; gap: 8px;
+    background: var(--panel-2); border-radius: 12px; padding: 12px; }
+  #keyform p { font-size: 12px; color: var(--dim); line-height: 1.4; }
+  #keyform .row { display: flex; gap: 8px; }
+  #keyinput {
+    flex: 1; background: #0d1322; border: 1px solid rgba(122,162,247,.35);
+    border-radius: 9px; color: var(--text); font-size: 12px;
+    padding: 8px 10px; outline: none;
+  }
+  #keysave {
+    background: var(--accent); border: none; border-radius: 9px;
+    color: #0b0f1a; font-weight: 700; font-size: 12px; padding: 8px 14px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <img src="logo.png" alt="SatAi"><h1>SatAi</h1>
+    <span id="engine" title="motore di inferenza">PSF · avvio…</span>
+    <button id="visual" title="Apri la rete in 3D in una finestra a sinistra">◈ Visual</button>
+  </header>
+
+  <div id="dropzone">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#7aa2f7" stroke-width="1.6"
+         stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="3"/>
+      <circle cx="9" cy="9" r="2"/>
+      <path d="M21 15l-4.5-4.5L7 20"/>
+    </svg>
+    <div id="dz-hint"><b>Trascina qui la foto</b><small>oppure clicca per sceglierla</small></div>
+    <img id="preview" alt="">
+    <div id="fits-badge"><div class="tag">FITS</div><div class="fname" id="fits-name"></div></div>
+    <button id="clear-btn" title="Rimuovi foto">✕</button>
+  </div>
+  <input type="file" id="fileinput" accept=".png,.jpg,.jpeg,.tif,.tiff,.fits,.fit,.fts" hidden>
+
+  <div id="answer"><div class="placeholder">In attesa di una foto…</div></div>
+
+  <div id="chips">
+    <button class="chip" id="chip-cosa">✨ Cosa vedo nella foto?</button>
+    <button class="chip" id="chip-perche">🔍 Perché proprio…?</button>
+  </div>
+
+  <div id="keyform">
+    <p>Il riconoscimento degli oggetti usa OpenRouter: una sola chiave
+       gratuita per tutti i modelli, con fallback automatico. Creala in
+       2 minuti su <b>openrouter.ai/keys</b> e incollala qui
+       (resta solo su questo Mac):</p>
+    <div class="row">
+      <input id="keyinput" type="password" placeholder="sk-or-v1-…" autocomplete="off">
+      <button id="keysave">Salva</button>
+    </div>
+  </div>
+
+<script>
+const $ = id => document.getElementById(id);
+const dz = $('dropzone'), fileinput = $('fileinput'), answer = $('answer');
+const chips = $('chips'), chipCosa = $('chip-cosa'), chipPerche = $('chip-perche');
+const keyform = $('keyform');
+const IMG_EXT = ['png','jpg','jpeg','tif','tiff'];
+const FITS_EXT = ['fits','fit','fts'];
+let currentPath = null, lastAnalysis = null, busy = false;
+
+const api = () => window.pywebview.api;
+
+async function showEngine() {
+  try {
+    const e = await api().engine();
+    $('engine').textContent = e.backend === 'coreml'
+      ? 'PSF · CoreML Neural Engine' : 'PSF · PyTorch (fallback)';
+    $('engine').title = e.label || '';
+  } catch (_) { /* window not ready yet */ }
+}
+window.addEventListener('pywebviewready', showEngine);
+setTimeout(showEngine, 400);
+
+$('visual').addEventListener('click', async () => {
+  const btn = $('visual');
+  btn.disabled = true;
+  try {
+    const r = await api().open_visual();
+    if (!r.ok) setText('<div id="err">' + r.message + '</div>');
+  } catch (e) {
+    setText('<div id="err">Visual non disponibile: ' + e + '</div>');
+  }
+  setTimeout(() => { btn.disabled = false; }, 800);
+});
+
+function setBusy(label, cloud) {
+  answer.innerHTML = '<div class="working"><div class="spinner' +
+    (cloud ? ' cloud' : '') + '"></div></div>';
+  const span = document.createElement('span');
+  span.textContent = label;
+  answer.querySelector('.working').appendChild(span);
+}
+function setText(html) { answer.innerHTML = html; }
+function renderDetail(top) {
+  if (!top || !top.length) return '';
+  return '<div id="detail">' + top.map(t =>
+    '<div class="confrow"><span class="nm">' + t.name + '</span>' +
+    '<div class="bar"><i style="width:' + Math.max(2, t.pct) + '%"></i></div>' +
+    '<span class="pc">' + t.pct.toFixed(1) + '%</span></div>').join('') + '</div>';
+}
+
+function resetDrop() {
+  currentPath = null; lastAnalysis = null;
+  $('preview').style.display = 'none'; $('preview').removeAttribute('src');
+  $('fits-badge').style.display = 'none';
+  $('clear-btn').style.display = 'none';
+  $('dz-hint').style.display = '';
+  dz.querySelector('svg').style.display = '';
+  chips.style.display = 'none';
+  setText('<div class="placeholder">In attesa di una foto…</div>');
+}
+
+async function handleFile(file) {
+  if (!file || busy) return;
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  if (!IMG_EXT.includes(ext) && !FITS_EXT.includes(ext)) {
+    setText('<div id="err">Formato non supportato: usa PNG, JPG, TIFF o FITS.</div>');
+    return;
+  }
+  if (file.size > 150 * 1024 * 1024) {
+    setText('<div id="err">File troppo grande (massimo 150 MB).</div>');
+    return;
+  }
+  busy = true;
+  // preview
+  if (IMG_EXT.includes(ext)) {
+    $('preview').src = URL.createObjectURL(file);
+    $('preview').style.display = 'block';
+  } else {
+    $('fits-name').textContent = file.name;
+    $('fits-badge').style.display = 'flex';
+  }
+  $('dz-hint').style.display = 'none';
+  dz.querySelector('svg').style.display = 'none';
+  $('clear-btn').style.display = 'block';
+  chips.style.display = 'none';
+  keyform.style.display = 'none';
+  setBusy('Sto analizzando la foto…');
+
+  try {
+    const buf = await file.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    const CH = 32768;
+    for (let i = 0; i < bytes.length; i += CH)
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+    const b64 = btoa(bin);
+
+    const up = await api().save_upload(file.name, b64);
+    if (!up.ok) { setText('<div id="err">' + up.message + '</div>'); busy = false; return; }
+    currentPath = up.path;
+
+    const res = await api().analyze(currentPath);
+    lastAnalysis = res;
+    showEngine();   // reflect a transparent CoreML -> PyTorch fallback
+    if (!res.ok) {
+      setText('<div id="err">' + res.message + '</div>');
+    } else {
+      let html = '<div id="sentence">' + res.sentence + '</div>';
+      if (res.identified)
+        html += '<div class="confrow" style="margin-top:6px"><span class="nm">confidenza</span>' +
+                '<div class="bar"><i style="width:' + Math.max(2, res.confidence) + '%"></i></div>' +
+                '<span class="pc">' + res.confidence.toFixed(1) + '%</span></div>';
+      html += renderDetail(res.top);
+      setText(html);
+      if (res.identified) {
+        chipPerche.textContent = '🔍 Perché proprio ' + res.top[0].name + '?';
+        chips.style.display = 'flex';
+        api().has_api_key().then(k => { chipCosa.style.display = k ? '' : 'none'; });
+      }
+    }
+  } catch (e) {
+    setText('<div id="err">Errore inatteso: ' + e + '</div>');
+  }
+  busy = false;
+}
+
+chipPerche.addEventListener('click', async () => {
+  if (busy) return;
+  chipPerche.disabled = true; setBusy('Sto preparando la spiegazione…');
+  try {
+    const r = await api().why();
+    setText('<div id="sentence">🔍 Perché questo satellite?</div><div id="extra">' +
+            (r.ok ? r.message : r.message) + '</div>');
+  } catch (e) { setText('<div id="err">' + e + '</div>'); }
+  chipPerche.disabled = false;
+});
+
+function showKeyForm() {
+  keyform.style.display = 'flex';
+  $('keyinput').focus();
+}
+$('keysave').addEventListener('click', async () => {
+  const key = $('keyinput').value.trim();
+  if (!key) return;
+  await api().save_key(key);
+  keyform.style.display = 'none';
+  $('keyinput').value = '';
+  chipCosa.style.display = '';
+  setBusy('Chiave salvata: chiedo ai modelli gratuiti cosa c\u2019\u00e8 nella foto…', true);
+  chipCosa.click();   // retry right away
+});
+
+chipCosa.addEventListener('click', async () => {
+  if (busy || !lastAnalysis) return;
+  chipCosa.disabled = true; setBusy('Chiedo ai modelli gratuiti cosa c\u2019\u00e8 nella foto…', true);
+  try {
+    const r = await api().identify_object();
+    if (r.ok) {
+      // Cloud output is untrusted DATA: build nodes and assign with
+      // textContent so nothing from the model can ever execute.
+      setText('<div id="sentence">✨ Nella foto</div><div id="extra"></div>');
+      const extra = answer.querySelector('#extra');
+      extra.textContent = r.message;
+    } else if (r.message.indexOf('Nessuna chiave') !== -1) {
+      setText('<div id="err">' + r.message + '</div>');
+      showKeyForm();
+    } else {
+      setText('<div id="err">' + r.message + '</div>');
+    }
+  } catch (e) { setText('<div id="err">' + e + '</div>'); }
+  chipCosa.disabled = false;
+});
+
+// ---- drop zone events ----
+dz.addEventListener('click', e => {
+  if (e.target.id === 'clear-btn') { resetDrop(); return; }
+  if (!currentPath) fileinput.click();
+});
+fileinput.addEventListener('change', e => handleFile(e.target.files[0]));
+['dragenter','dragover'].forEach(ev =>
+  dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('drag'); }));
+['dragleave','drop'].forEach(ev =>
+  dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('drag'); }));
+dz.addEventListener('drop', e => handleFile(e.dataTransfer.files[0]));
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => e.preventDefault());
+$('clear-btn').addEventListener('click', resetDrop);
+</script>
+</body>
+</html>

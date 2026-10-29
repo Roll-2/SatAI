@@ -2,13 +2,15 @@
 
 Base command (spec 11.1)::
 
-    python main.py --input <path_immagine> --mode <fits|png>
+    python Tools/satai.py --input <path_immagine> --mode <fits|png>
 
 Extra options (spec 11.3):
 
 * ``--save-crops`` — save the analyzed crops for manual inspection;
 * ``--verbose`` — print the per-crop probability matrix;
-* ``--batch-dir <dir>`` — process a whole folder and write a CSV report.
+* ``--batch-dir <dir>`` — process a whole folder and write a CSV report;
+* ``--backend auto|coreml|pytorch`` — choose the inference engine
+  (``auto`` prefers CoreML/Neural Engine on Apple Silicon).
 
 Output block follows spec 11.2 exactly.
 """
@@ -20,7 +22,10 @@ import csv
 import sys
 from pathlib import Path
 
-from src.utils.constants import BEST_MODEL_PATH, CLASS_NAMES, DISPLAY_NAMES
+# Allow ``python Tools/satai.py`` from the project root.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from Src.utils.constants import BEST_MODEL_PATH, CLASS_NAMES, DISPLAY_NAMES  # noqa: E402
 
 # Reordered per spec 11.2 (Hubble, JWST, Euclid, Altro, ...).
 _OUTPUT_ORDER = [0, 1, 3, 4, 5, 6, 7, 2, 8]
@@ -132,21 +137,41 @@ def main() -> None:
     parser.add_argument("--batch-dir", type=str, default=None,
                         help="elabora un'intera cartella e produce un CSV")
     parser.add_argument("--model", type=str, default=str(BEST_MODEL_PATH),
-                        help="checkpoint del modello da usare")
+                        help="checkpoint PyTorch da usare")
+    parser.add_argument("--backend", choices=["auto", "coreml", "pytorch"],
+                        default="auto",
+                        help="motore di inferenza (default: CoreML se "
+                             "disponibile, altrimenti PyTorch)")
     args = parser.parse_args()
 
     if not args.input and not args.batch_dir:
         parser.error("specificare --input <path> oppure --batch-dir <dir>")
 
-    from src.inference.predictor import Predictor, load_model
+    from Src.inference.runtime import backend_report, create_predictor
 
-    if not Path(args.model).exists():
+    report = backend_report(args.model)
+    if args.backend == "coreml" and not report["coreml_usable"]:
+        print("CoreML non disponibile su questa macchina/export:")
+        print(f"  {report['reason'] or 'motivo sconosciuto'}")
+        sys.exit(1)
+    if not Path(args.model).exists() and not report["coreml_usable"]:
         print(f"Modello non trovato: {args.model}")
-        print("Addestra prima il modello: python -m src.training.train")
+        print("Addestra prima il modello: python -m Src.training.train")
         sys.exit(1)
 
-    model = load_model(args.model)
-    predictor = Predictor(model)
+    try:
+        predictor, backend = create_predictor(
+            prefer_coreml=args.backend != "pytorch",
+            model_path=args.model)
+    except Exception as exc:                 # noqa: BLE001 — CLI boundary
+        print(f"Impossibile caricare il modello: {exc}")
+        sys.exit(1)
+
+    if args.backend == "coreml" and backend != "coreml":
+        print("CoreML richiesto ma non è stato possibile caricarlo.")
+        sys.exit(1)
+
+    print(f"Motore: {predictor.backend_label}")
 
     if args.batch_dir:
         _process_batch(args, predictor)

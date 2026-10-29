@@ -17,7 +17,7 @@ import numpy as np
 from astropy.io import fits
 from PIL import Image
 
-from src.utils.constants import SKY_PERCENTILE_CLIP
+from Src.utils.constants import SKY_PERCENTILE_CLIP
 
 __all__ = ["load_fits", "load_png", "load_image"]
 
@@ -79,16 +79,22 @@ def load_fits(path: str | np.ndarray) -> np.ndarray:
 
 
 def load_png(path: str | Image.Image) -> np.ndarray:
-    """Load a PNG/JPG image, convert to grayscale and normalize to [0, 1].
+    """Load a PNG/JPG image and normalize it like the FITS training data.
 
     Grayscale conversion uses the luminance formula from spec 3.1:
     ``GRAY = 0.2989*R + 0.5870*G + 0.1140*B``.
+
+    Since the model is trained on ``load_fits`` output (sky-subtracted,
+    std-normalized, percentile-clipped), a photo must go through the same
+    normalization or the domain gap collapses confidence to ~1/N (observed
+    2026-09-14: JPEG/gamma backgrounds at ~0.05 vs ~0.01 in training
+    crops -> every prediction "Non determinabile").
 
     Args:
         path: path to the image, or an already-open PIL image.
 
     Returns:
-        float32 2D image array in [0, 1].
+        float32 2D image array in [0, 1], sky-normalized as in training.
     """
     pil_img = Image.open(path) if isinstance(path, (str, bytes)) else path
     if pil_img.mode not in ("L", "I", "I;16", "F"):
@@ -104,7 +110,19 @@ def load_png(path: str | Image.Image) -> np.ndarray:
         # 8-bit -> /255; 16-bit -> /65535 (spec 3.1 uses /255 for 8-bit
         # PNG/JPG; 16-bit FITS-like PNGs must not be crushed to near-black).
         arr = arr / (65535.0 if arr.max() > 255 else 255.0)
-    return np.clip(arr, 0.0, 1.0).astype(np.float32)
+    arr = np.clip(arr, 0.0, 1.0).astype(np.float32)
+
+    # Sky normalization identical to load_fits (Task 3.1): without it the
+    # inference distribution never matches the training one.
+    sky_median = float(np.median(arr))
+    sky_std = float(np.std(arr))
+    if sky_std > 0:
+        arr = (arr - sky_median) / sky_std
+    hi = float(np.percentile(arr, SKY_PERCENTILE_CLIP))
+    arr = np.clip(arr, 0.0, 1.0 if hi <= 0 else hi)
+    if arr.max() > 0:
+        arr = arr / arr.max()
+    return arr.astype(np.float32)
 
 
 def load_image(path: str, mode: str | None = None) -> np.ndarray:
