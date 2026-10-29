@@ -1,25 +1,24 @@
 # SatAi — AstroNet-v2
 
 Classificatore a 9 classi (8 telescopi + classe "Altro") basato sull'analisi
-della **Point Spread Function (PSF)** in ritagli da **64×64 pixel**.
+delle **Point Spread Function (PSF)** in ritagli da **64×64 pixel** auto-generati.
 
 *La scheda completa di input, blocchi, nodi, parametri e campo recettivo è in
 [Models/README.md](Models/README.md); la scena 3D e il video sono in
 [Visuals/README.md](Visuals/README.md).*
 
-Il modello gira **su CoreML / Apple Neural Engine** sul Mac Apple Silicon;
-il checkpoint PyTorch resta come fallback per le altre macchine (o se il
+Il modello gira **su CoreML / Apple Neural Engine** su Apple Silicon;
+il checkpoint PyTorch resta come fallback per altre macchine (o se il
 pacchetto CoreML manca/è vecchio). La UI mostra in alto il motore attivo.
 
 ## La rete in 3D
 
 ![AstroNet-v2: 4 blocchi convoluzionali, 480 filtri e 9.872 fibre](Visuals/satai_network_3d_wide.png)
 
-La visualizzazione Blender è costruita dai pesi reali del checkpoint e da un
-crop Hubble: 4.096 voxel d'ingresso, 480 filtri con i kernel 3×3, 61.833
-attivazioni e 9.872 filamenti, di cui **4.724 negativi** (magenta). Le
-didascalie stanno sotto i moduli e si accendono insieme al layer; la GAP ha la
-sua etichetta. Apri **[`Visuals/index.html`](Visuals/index.html)** per il video
+La visualizzazione Blender è modellata sui pesi reali e da un
+crop Hubble originale: 4.096 voxel d'ingresso, 480 filtri con i kernel 3×3, 61.833
+attivazioni e 9.872 filamenti, di cui **4.724 negativi**. 
+Apri **[`Visuals/index.html`](Visuals/index.html)** per il video
 renderizzato senza Blender; la scena modificabile è
 [`Visuals/satai_network_3d.blend`](Visuals/satai_network_3d.blend). Dettagli e
 comandi in [`Visuals/README.md`](Visuals/README.md).
@@ -86,18 +85,18 @@ SatAi/
 | `Models/AstroNetV2.mlpackage` | **primario** su Apple Silicon, CoreML `CPU_AND_NE` (Neural Engine) | ~1.6 MB |
 | `Models/astro_net_v2_best.pt` | **fallback** PyTorch (MPS/CUDA/CPU), usato su non-Apple o se CoreML non è disponibile | ~1.7 MB |
 
-Il pacchetto CoreML contiene gli stessi pesi del checkpoint PyTorch.
+Il pacchetto CoreML contiene gli stessi pesi del PyTorch.
 L'architettura usa solo operatori compatibili con l'ANE
 (`conv`, `relu`, `max_pool`, `reduce_mean`, `linear`); le BatchNorm vengono
 assorbite nelle convoluzioni durante la conversione. L'input è fissato a
 `(1, 1, 64, 64)` float32 e l'output è `(1, 9)` logits: la softmax resta
 nell'app, esattamente come nel percorso PyTorch.
 
-**Perché CoreML e non MLX:** MLX accelera CPU/GPU ma non espone la Neural
-Engine; Core ML è l'unico percorso Apple che può schedulare la rete sull'ANE.
+**Perché CoreML e non MLX:** MLX accelera CPU/GPU ma non interagisce con il Neural
+Engine; Core ML è l'unico percorso Apple considera valido per il ANE.
 Il modello è piccolo, quindi il guadagno non è la velocità assoluta (il
-collo di bottiglia della pipeline è dominato da star finding e cropping): il guadagno
-è avere un secondo motore dedicato, a basso consumo, che non occupa la GPU.
+collo di bottiglia della pipeline è dominato da star-finding e cropping): il guadagno
+è avere un motore dedicato, a basso consumo, che non occupa la GPU.
 
 ### Quale motore sceglie l'app
 
@@ -109,7 +108,7 @@ collo di bottiglia della pipeline è dominato da star finding e cropping): il gu
 * CoreML non riesce a caricare il modello.
 
 La regola sull'mtime evita di servire previsioni di un modello vecchio dopo
-un nuovo training. Dopo un training, quindi, rilancia il convertitore.
+un nuovo training. Dopo un training, quindi, va rilanciato il convertitore.
 
 ### Verifiche misurate (29/10/2026)
 
@@ -122,7 +121,7 @@ un nuovo training. Dopo un training, quindi, rilancia il convertitore.
 | Memoria dopo il primo analyze | ~480 MB stabili su 5 analisi (prima del caricamento: ~56 MB) |
 
 Le 4 classi senza dati (Roman, Euclid, Rubin, Gaia) hanno support 0 nel test
-set, quindi precision/recall 0: è un limite del dataset, non del motore.
+set, quindi precision/recall 0: è un limite del dataset **ATTUALE**, non del motore.
 
 ### Rigenerare il pacchetto CoreML
 
@@ -152,21 +151,19 @@ L'intestazione mostra `PSF · CoreML Neural Engine` oppure
 
 ### Cosa succede dopo l'analisi
 
-Dopo ogni foto l'app libera la memoria **senza rompere le funzioni della UI**:
+Dopo ogni foto l'app libera la memoria senza intaccare le funzioni della UI:
 
 * viene tenuta **una sola** foto in `Data/ui_uploads/` (quella appena
-  analizzata, che serve alla chip OpenRouter); le precedenti vengono rimosse;
+  analizzata, che serve all'API OpenRouter); le precedenti vengono rimosse;
 * `_last_result` (~3 KB di probabilità) e `_last_image_path` (una stringa)
-  restano in memoria: servono a `why()` e `identify_object()`. Azzerarli, come
-  faceva la versione precedente, disabilitava silenziosamente entrambe le chip;
+  restano in memoria: servono a `why()` e `identify_object()`.
 * la cache MPS viene svuotata solo sul percorso PyTorch; `gc.collect()` gira
   su entrambi;
 * il log di avanzamento in `/tmp` viene rimosso.
 
-La crescita illimitata di upload (fino a 14 GB) è quindi sparita: la memoria
-si assesta dopo il primo analyze e resta piatta. Il modello è 1.6 MB; la
-maggior parte dei ~480 MB è il runtime Python/CoreML (coremltools importa
-torch), non i dati della foto.
+La memoria si assesta dopo il primo analyze e resta piatta.
+Il modello è 1.6 MB; la maggior parte dei ~480 MB è il runtime Python/CoreML
+(coremltools importa torch), non i dati della foto.
 
 ## CLI
 
@@ -237,11 +234,7 @@ python -m Src.training.evaluate
 # 5. Export CoreML per il Neural Engine
 python Tools/convert_to_coreml.py --force
 ```
-
-Lo split attuale contiene **12.467 crop train / 2.924 val / 2.927 test**.
-La vecchia cartella `staging/` (21.230 crop intermedi) è in
-`Trash/datasets/crops_staging/`: se vuoi rifare lo split da lì, spostala in
-`Data/crops/staging/` prima del passo 2. I FITS grezzi non sono più presenti;
+I FITS grezzi non sono più presenti;
 `Data/fits_raw/` è il buffer vuoto per una nuova acquisizione.
 
 ## Modificare il modello
@@ -288,22 +281,9 @@ pacchetto CoreML con `Tools/convert_to_coreml.py --force`.
   errore del backend CoreML.
 * Il bundle `SatAi.app` registra il percorso assoluto del progetto: se sposti
   la cartella, rilancia `Tools/make_app.py`.
-* La UI richiede una chiave OpenRouter solo per le chip descrittive; la
-  classificazione PSF è completamente locale.
+* La UI richiede una chiave OpenRouter solo per le ulteriori domande descrittive;
+  la classificazione PSF è completamente locale.
 
-## Trash (revisione manuale)
+## AI 
 
-Niente è stato cancellato. Contenuto attuale:
-
-| Cartella | Cosa c'è | Dimensione |
-|---|---|---|
-| `Trash/raw_images/` | vecchie foto Hubble/JWST usate per test manuali, non referenziate dal codice | ~1.6 GB |
-| `Trash/datasets/crops_staging/` | staging intermedio precedente allo split | ~415 MB |
-| `Trash/models/` | `astro_net_v2_last.pt` e vecchio modello in `quarantine/` | ~3 MB |
-| `Trash/scripts/` | diagnostiche una tantum: acquisizione e forma delle PSF | ~20 KB |
-| `Trash/docs/` | documentazione storica (piano di rilascio, diagnosi, mappa neuroni) | ~40 KB |
-| `Trash/generated_assets/` | icone rigenerate da `Tools/make_app.py` | ~5 MB |
-| `Trash/pycache/` | vecchie cache Python (tag `cpython-314`), rigenerabili | <1 MB |
-
-Controlla, recupera ciò che ti serve e poi svuota la cartella. Nessun file in
-`App/`, `Src/`, `Tools/` o nei test importa qualcosa da `Trash/`.
+- modelli AI sono stati usati per la verifica e produzione di questo software
