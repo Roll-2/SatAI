@@ -33,19 +33,19 @@ Data/**
 !Data/ui_uploads/.gitkeep
 
 # ---------- Trained models and checkpoints ----------
-Models/**
-!Models/
-!Models/.gitkeep
-!Models/README.md
-*.pt
-*.pth
-*.ckpt
-*.safetensors
-*.mlmodel
-*.mlpackage
-*.mlpackage/**
+#Models/**
+#!Models/
+#!Models/.gitkeep
+#!Models/README.md
+#*.pt
+#*.pth
+#*.ckpt
+#*.safetensors
+#*.mlmodel
+#*.mlpackage
+#*.mlpackage/**
 
-# ---------- Local review folder (nothing is deleted automatically) ----------
+# ---------- Local review folder (nothing is deleted automatically, DEPRECATED) ----------
 Trash/
 
 # ---------- Images and photos (never commit) ----------
